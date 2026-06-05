@@ -2,40 +2,43 @@
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import Timer, RisingEdge
+import pyuvm
+from pyuvm import *
+from env import AlgnEnv
+from test.apb_pkg.apb_sequences import ApbWriteSequence, ApbReadSequence
 
-@cocotb.test()
-async def hello_world(dut):
-    """Simple hello world — clock + reset + signal init"""
-    
-    # Start 100MHz clock (10ns period)
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
-    
-    # Αρχικοποίηση όλων των inputs πριν το reset
-    dut.paddr.value    = 0
-    dut.pwrite.value   = 0
-    dut.psel.value     = 0
-    dut.penable.value  = 0
-    dut.pwdata.value   = 0
+@pyuvm.test()
+class AlgnTest(uvm_test):
 
-    dut.md_rx_valid.value  = 0
-    dut.md_rx_data.value   = 0
-    dut.md_rx_offset.value = 0
-    dut.md_rx_size.value   = 0
+    def build_phase(self):
+        self.env = AlgnEnv("env", self)
 
-    dut.md_tx_ready.value = 0
-    dut.md_tx_err.value   = 0
+    async def run_phase(self):
+        self.raise_objection()
 
-    # Reset sequence
-    dut.reset_n.value = 1
-    await Timer(3, unit="ns")
-    
-    dut.reset_n.value = 0
-    await Timer(30, unit="ns")
-    
-    dut.reset_n.value = 1
-    
-    # Περίμενε 5 clock cycles μετά το reset
-    for _ in range(5):
-        await RisingEdge(dut.clk)
-    
-    dut._log.info("Reset sequence done!")
+        # Clock + Reset
+        cocotb.start_soon(Clock(cocotb.top.clk, 10, unit="ns").start())
+
+        cocotb.top.reset_n.value = 1
+        await Timer(3, unit="ns")
+        cocotb.top.reset_n.value = 0
+        await Timer(30, unit="ns")
+        cocotb.top.reset_n.value = 1
+
+        for _ in range(5):
+            await RisingEdge(cocotb.top.clk)
+
+        # APB Write
+        write_seq = ApbWriteSequence("write_seq")
+        write_seq.addr = 0x0000
+        write_seq.data = 0x12345678
+        await write_seq.start(self.env.apb_agent.sequencer)
+
+        # APB Read
+        read_seq = ApbReadSequence("read_seq")
+        read_seq.addr = 0x0000
+        await read_seq.start(self.env.apb_agent.sequencer)
+
+        self.logger.info(f"Read back: 0x{read_seq.result:08x}")
+
+        self.drop_objection()
