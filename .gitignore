@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Cocotb
+sim_build/
+results.xml
+*.vcd
+dump.vcd
+
+# VSCode
+.vscode/
